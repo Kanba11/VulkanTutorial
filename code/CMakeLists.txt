@@ -2,6 +2,8 @@ cmake_minimum_required (VERSION 3.28)
 
 project (VulkanTutorial)
 
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/CMake")
+
 find_package (glfw3 REQUIRED)
 find_package (glm REQUIRED)
 find_package (Vulkan REQUIRED)
