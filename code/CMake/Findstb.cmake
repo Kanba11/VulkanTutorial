@@ -84,3 +84,7 @@ if(stb_FOUND)
 endif()
 
 mark_as_advanced(stb_INCLUDE_DIR)
+
+message(STATUS "stb_FOUND = ${stb_FOUND}")
+message(STATUS "stb_INCLUDE_DIR = ${stb_INCLUDE_DIR}")
+message(STATUS "stb_SOURCE_DIR = ${stb_SOURCE_DIR}")
