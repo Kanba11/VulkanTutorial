@@ -175,6 +175,7 @@ class HelloTriangleApplication {
 			throw std::runtime_error("failed to create window surface!");
 		}
 	}
+
 	void pickPhysicalDevice() {
 		uint32_t deviceCount = 0;
 		vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
