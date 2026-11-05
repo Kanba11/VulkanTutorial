@@ -4,7 +4,7 @@ window system to present results to the screen, we need to use the WSI (Window
 System Integration) extensions. In this chapter we'll discuss the first one,
 which is `VK_KHR_surface`. It exposes a `VkSurfaceKHR` object that represents an
 abstract type of surface to present rendered images to. The surface in our
-program will be backed by the window that we've already opened with GLFW.
+program will be backed by the window that we've already opened with SDL.
 
 The `VK_KHR_surface` extension is an instance level extension and we've actually
 already enabled it, because it's included in the list returned by
@@ -37,19 +37,17 @@ platform-specific addition to the extension, which on Windows is called
 
 I will demonstrate how this platform specific extension can be used to create a
 surface on Windows, but we won't actually use it in this tutorial. It doesn't
-make any sense to use a library like GLFW and then proceed to use
-platform-specific code anyway. GLFW actually has `glfwCreateWindowSurface` that
+make any sense to use a library like SDL and then proceed to use
+platform-specific code anyway. SDL actually has `glfwCreateWindowSurface` that
 handles the platform differences for us. Still, it's good to see what it does
 behind the scenes before we start relying on it.
 
 To access native platform functions, you need to update the includes at the top:
 
 ```c++
-#define VK_USE_PLATFORM_WIN32_KHR
-#define GLFW_INCLUDE_VULKAN
-#include <GLFW/glfw3.h>
-#define GLFW_EXPOSE_NATIVE_WIN32
-#include <GLFW/glfw3native.h>
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_vulkan.h>
+#include <vulkan/vulkan.h>
 ```
 
 Because a window surface is a Vulkan object, it comes with a
@@ -64,7 +62,7 @@ createInfo.hwnd = glfwGetWin32Window(window);
 createInfo.hinstance = GetModuleHandle(nullptr);
 ```
 
-The `glfwGetWin32Window` function is used to get the raw `HWND` from the GLFW
+The `glfwGetWin32Window` function is used to get the raw `HWND` from the SDL
 window object. The `GetModuleHandle` call returns the `HINSTANCE` handle of the
 current process.
 
@@ -80,7 +78,7 @@ The process is similar for other platforms like Linux, where
 `vkCreateXcbSurfaceKHR` takes an XCB connection and window as creation details
 with X11.
 
-The `glfwCreateWindowSurface` function performs exactly this operation with a
+The `SDL_Vulkan_CreateSurface` function performs exactly this operation with a
 different implementation for each platform. We'll now integrate it into our
 program. Add a function `createSurface` to be called from `initVulkan` right
 after instance creation and `setupDebugMessenger`.
@@ -99,20 +97,20 @@ void createSurface() {
 }
 ```
 
-The GLFW call takes simple parameters instead of a struct which makes the
+The SDL call takes simple parameters instead of a struct which makes the
 implementation of the function very straightforward:
 
 ```c++
 void createSurface() {
-    if (glfwCreateWindowSurface(instance, window, nullptr, &surface) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create window surface!");
-    }
+	if (!SDL_Vulkan_CreateSurface(window, instance, nullptr, &surface)) {
+		throw std::runtime_error("failed to create window surface!");
+	}
 }
 ```
 
-The parameters are the `VkInstance`, GLFW window pointer, custom allocators and
+The parameters are the `VkInstance`, SDL window pointer, custom allocators and
 pointer to `VkSurfaceKHR` variable. It simply passes through the `VkResult` from
-the relevant platform call. GLFW doesn't offer a special function for destroying
+the relevant platform call. SDL doesn't offer a special function for destroying
 a surface, but that can easily be done through the original API:
 
 ```c++
