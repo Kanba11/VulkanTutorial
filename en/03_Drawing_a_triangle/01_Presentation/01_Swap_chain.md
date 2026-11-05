@@ -324,8 +324,8 @@ special value: the maximum value of `uint32_t`. In that case we'll pick the
 resolution that best matches the window within the `minImageExtent` and
 `maxImageExtent` bounds. But we must specify the resolution in the correct unit.
 
-GLFW uses two units when measuring sizes: pixels and
-[screen coordinates](https://www.glfw.org/docs/latest/intro_guide.html#coordinate_systems).
+SDL3 uses two units when measuring sizes: window coordinates and
+[pixels](https://wiki.libsdl.org/SDL3/README-highdpi).
 For example, the resolution `{WIDTH, HEIGHT}` that we specified earlier when
 creating the window is measured in screen coordinates. But Vulkan works with
 pixels, so the swap chain extent must be specified in pixels as well.
@@ -334,7 +334,7 @@ display), screen coordinates don't correspond to pixels. Instead, due to the
 higher pixel density, the resolution of the window in pixel will be larger than
 the resolution in screen coordinates. So if Vulkan doesn't fix the swap extent
 for us, we can't just use the original `{WIDTH, HEIGHT}`. Instead, we must use
-`glfwGetFramebufferSize` to query the resolution of the window in pixel before
+`SDL_GetWindowSizeInPixels` to query the resolution of the window in pixel before
 matching it against the minimum and maximum image extent.
 
 ```c++
@@ -349,7 +349,7 @@ VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities) {
         return capabilities.currentExtent;
     } else {
         int width, height;
-        glfwGetFramebufferSize(window, &width, &height);
+        SDL_GetWindowSizeInPixels(window, &width, &height);
 
         VkExtent2D actualExtent = {
             static_cast<uint32_t>(width),
