@@ -1,5 +1,5 @@
 Unlike earlier APIs, shader code in Vulkan has to be specified in a bytecode
-format as opposed to human-readable syntax like [GLSL](https://en.wikipedia.org/wiki/OpenGL_Shading_Language)
+format as opposed to human-readable syntax like [GLSL](https://en.wikipedia.org/wiki/OpenGL_Shading_Language),[Slang](https://shader-slang.org/slang/user-guide/)
 and [HLSL](https://en.wikipedia.org/wiki/High-Level_Shading_Language). This
 bytecode format is called [SPIR-V](https://www.khronos.org/spir) and is designed
 to be used with both Vulkan and OpenCL (both Khronos APIs). It is a format that
@@ -15,32 +15,29 @@ other vendor's drivers rejecting your code due to syntax errors, or worse, your
 shader running differently because of compiler bugs. With a straightforward
 bytecode format like SPIR-V that will hopefully be avoided.
 
-However, that does not mean that we need to write this bytecode by hand. Khronos
-has released their own vendor-independent compiler that compiles GLSL to SPIR-V.
-This compiler is designed to verify that your shader code is fully standards
-compliant and produces one SPIR-V binary that you can ship with your program.
-You can also include this compiler as a library to produce SPIR-V at runtime,
-but we won't be doing that in this tutorial. Although we can use this compiler directly via `glslangValidator.exe`, we will be using `glslc.exe` by Google instead. The advantage of `glslc` is that it uses the same parameter format as well-known compilers like GCC and Clang and includes some extra functionality like *includes*. Both of them are already included in the Vulkan SDK, so you don't need to download anything extra.
+However, that does not mean that we need to write this bytecode by hand. Khronos has released their own vendor-independent compiler that compiles Slang to SPIR-V. This compiler is designed to verify that your shader code is fully standards compliant and produces one SPIR-V binary that you can ship with your program. You can also include this compiler as a library to produce SPIR-V at runtime, but we won’t be doing that in this tutorial, until we get into reflection sometime in a future chapter. Although we can use this compiler directly via slangc, we will be using slangc in our cmake build process instead.
 
-GLSL is a shading language with a C-style syntax. Programs written in it have a
+Slang is a shading language with a C-style syntax. Programs written in it have a
 `main` function that is invoked for every object. Instead of using parameters
 for input and a return value as output, GLSL uses global variables to handle
 input and output. The language includes many features to aid in graphics
 programming, like built-in vector and matrix primitives. Functions for
 operations like cross products, matrix-vector products and reflections around a
-vector are included. The vector type is called `vec` with a number indicating
-the amount of elements. For example, a 3D position would be stored in a `vec3`.
-It is possible to access single components through members like `.x`, but it's
-also possible to create a new vector from multiple components at the same time.
-For example, the expression `vec3(1.0, 2.0, 3.0).xy` would result in `vec2`. The
+vector are included. The vector type is called `float` with a number indicating
+the amount of elements. For example, a 3D position would be stored in a `float3`.
+
+It is possible to access single components through members like `.x` called
+the swizzle operator, but it's also possible to create a new vector from
+multiple components at the same time. For example, the expression
+`float3(1.0,2.0, 3.0).xy` would result in `float2`. The
 constructors of vectors can also take combinations of vector objects and scalar
-values. For example, a `vec3` can be constructed with
-`vec3(vec2(1.0, 2.0), 3.0)`.
+values. For example, a `float3` can be constructed with
+`float3(float2(1.0, 2.0), 3.0)`.
 
 As the previous chapter mentioned, we need to write a vertex shader and a
 fragment shader to get a triangle on the screen. The next two sections will
-cover the GLSL code of each of those and after that I'll show you how to produce
-two SPIR-V binaries and load them into the program.
+cover the Slang code those, and after that I'll show you how to
+produce one SPIR-V binaries and load it into the program.
 
 ## Vertex shader
 
@@ -83,54 +80,76 @@ triangle pop up on the screen. We're going to do something a little unorthodox
 in the meanwhile: include the coordinates directly inside the vertex shader. The
 code looks like this:
 
-```glsl
-#version 450
-
-vec2 positions[3] = vec2[](
-    vec2(0.0, -0.5),
-    vec2(0.5, 0.5),
-    vec2(-0.5, 0.5)
+```slang
+static float2 positions[3] = float2[](
+    float2(0.0, -0.5),
+    float2(0.5, 0.5),
+    float2(-0.5, 0.5)
 );
 
-void main() {
-    gl_Position = vec4(positions[gl_VertexIndex], 0.0, 1.0);
+struct VertexOutput {
+    float4 sv_position : SV_Position;
+};
+
+[shader("vertex")]
+VertexOutput vertMain(uint vid : SV_VertexID) {
+    VertexOutput output;
+    output.sv_position = float4(positions[vid], 0.0, 1.0);
+    return output;
 }
 ```
 
-The `main` function is invoked for every vertex. The built-in `gl_VertexIndex`
-variable contains the index of the current vertex. This is usually an index into
-the vertex buffer, but in our case it will be an index into a hardcoded array
-of vertex data. The position of each vertex is accessed from the constant array
-in the shader and combined with dummy `z` and `w` components to produce a
-position in clip coordinates. The built-in variable `gl_Position` functions as
-the output.
+The `vertMain` function is invoked for every vertex. The built-in `SV_VertexID`
+annotated variable in the parameters contains the index of the current vertex.
+This is usually an index into the vertex buffer, but in our case, it will be
+an index into a hardcoded array of vertex data. The position of each vertex
+is accessed from the constant array in the shader and combined with dummy
+`z` and `w` components to produce a position in clip coordinates. The
+built-in annotation `SV_Position` marks the output in the VertexOutput struct.
+Something worth mentioning if you're familiar with other shading languages
+like GLSL or HLSL, there are no instructions for bindings.  This is a feature
+of Slang.  Slang is designed to automatically infer the bindings by the
+order of declaration.  The struct for positions is a static to inform the
+compiler that we don't need any bindings in our shader.
+Studious observers will notice that we're calling our main function
+vertMain instead of main, this is because Slang and SPIR-V both support
+having multiple entry points in one file.  This is important when you're
+dealing with pipelines which have more than just a single vert/frag shader
+combo.  Ray-tracing for instance, for even simple demos would have four or
+more shaders all small yet needing their own file which can become cumbersome.
+Another major feature of Slang is the ability to create shader libraries
+or modules; an exercise left to the reader is to explore more about this
+feature rich shading language.
+
+In this tutorial, we're going to demonstrate best practices by keeping the
+shaders to a single file.  If you know GLSL, there's GLSL versions of the
+shaders in the attachments folder which are direct translations.
 
 ## Fragment shader
 
-The triangle that is formed by the positions from the vertex shader fills an
+The triangle formed by the positions from the vertex shader fills an
 area on the screen with fragments. The fragment shader is invoked on these
 fragments to produce a color and depth for the framebuffer (or framebuffers). A
 simple fragment shader that outputs the color red for the entire triangle looks
 like this:
 
-```glsl
-#version 450
-
-layout(location = 0) out vec4 outColor;
-
-void main() {
-    outColor = vec4(1.0, 0.0, 0.0, 1.0);
+```slang
+[shader("fragment")]
+float4 fragMain() : SV_Target
+{
+    return float4(1.0, 0.0, 0.0, 1.0);
 }
 ```
 
-The `main` function is called for every fragment just like the vertex shader
-`main` function is called for every vertex. Colors in GLSL are 4-component
-vectors with the R, G, B and alpha channels within the [0, 1] range. Unlike
-`gl_Position` in the vertex shader, there is no built-in variable to output a
-color for the current fragment. You have to specify your own output variable for
-each framebuffer where the `layout(location = 0)` modifier specifies the index
-of the framebuffer. The color red is written to this `outColor` variable that is
-linked to the first (and only) framebuffer at index `0`.
+The `fragMain` entry point function is called for every fragment just like the
+vertex shader `vertMain` function is called for every vertex. Colors in Slang
+are 4-component vectors with the R, G, B and alpha channels within the [0, 1] range.
+The `SV_Target` annotation on the return value marks it as a color written to a
+framebuffer. It's actually optional here: Slang infers the render target from the
+return value on its own, even when a shader writes to more than one framebuffer, so
+`SV_Target` is only needed if you want to pin a particular output to a specific
+framebuffer index explicitly. We keep it in these examples for clarity about what's
+being written where. The color red is returned directly as `float4(1.0, 0.0, 0.0, 1.0)`.
 
 ## Per-vertex colors
 
@@ -139,109 +158,108 @@ the following look a lot nicer?
 
 ![](/images/triangle_coordinates_colors.png)
 
-We have to make a couple of changes to both shaders to accomplish this. First
+We have to make a couple of changes to both shaders to achieve this. First
 off, we need to specify a distinct color for each of the three vertices. The
 vertex shader should now include an array with colors just like it does for
 positions:
 
-```glsl
-vec3 colors[3] = vec3[](
-    vec3(1.0, 0.0, 0.0),
-    vec3(0.0, 1.0, 0.0),
-    vec3(0.0, 0.0, 1.0)
+```slang
+static float3 colors[3] = float3[](
+    float3(1.0, 0.0, 0.0),
+    float3(0.0, 1.0, 0.0),
+    float3(0.0, 0.0, 1.0)
 );
 ```
 
 Now we just need to pass these per-vertex colors to the fragment shader so it
 can output their interpolated values to the framebuffer. Add an output for color
-to the vertex shader and write to it in the `main` function:
+to the vertex shader and write to it in the `vertMain` function:
 
-```glsl
-layout(location = 0) out vec3 fragColor;
+```slang
+struct VertexOutput {
+    float3 color;
+    float4 sv_position : SV_Position;
+};
 
-void main() {
-    gl_Position = vec4(positions[gl_VertexIndex], 0.0, 1.0);
-    fragColor = colors[gl_VertexIndex];
+[shader("vertex")]
+VertexOutput vertMain(uint vid : SV_VertexID) {
+    VertexOutput output;
+    output.sv_position = float4(positions[vid], 0.0, 1.0);
+    output.color = colors[vid];
+    return output;
 }
 ```
 
 Next, we need to add a matching input in the fragment shader:
 
-```glsl
-layout(location = 0) in vec3 fragColor;
-
-void main() {
-    outColor = vec4(fragColor, 1.0);
+```slang
+[shader("fragment")]
+float4 fragMain(VertexOutput inVert) : SV_Target
+{
+    float3 color = inVert.color;
+    return float4(color, 1.0);
 }
 ```
 
-The input variable does not necessarily have to use the same name, they will be
-linked together using the indexes specified by the `location` directives. The
-`main` function has been modified to output the color along with an alpha value.
-As shown in the image above, the values for `fragColor` will be automatically
-interpolated for the fragments between the three vertices, resulting in a smooth
-gradient.
+The input variable does not necessarily have to use the same name, however,
+if they are in the same file, it really is convenient to not repeat ourselves.
+But either way, they will be linked together using the indexes specified by
+the `location` directives. The `fragMain` function has been modified to output
+the color along with an alpha value. As shown in the image above, the values
+for `fragColor` will be automatically  interpolated for the fragments between
+ the three vertices, resulting in a smooth gradient.
 
 ## Compiling the shaders
 
 Create a directory called `shaders` in the root directory of your project and
-store the vertex shader in a file called `shader.vert` and the fragment shader
-in a file called `shader.frag` in that directory. GLSL shaders don't have an
-official extension, but these two are commonly used to distinguish them.
+store the shaders in a file called `shader.slang`
 
-The contents of `shader.vert` should be:
+The contents of `shader.slang` should be:
 
-```glsl
-#version 450
-
-layout(location = 0) out vec3 fragColor;
-
-vec2 positions[3] = vec2[](
-    vec2(0.0, -0.5),
-    vec2(0.5, 0.5),
-    vec2(-0.5, 0.5)
+```slang
+static float2 positions[3] = float2[](
+    float2(0.0, -0.5),
+    float2(0.5, 0.5),
+    float2(-0.5, 0.5)
 );
 
-vec3 colors[3] = vec3[](
-    vec3(1.0, 0.0, 0.0),
-    vec3(0.0, 1.0, 0.0),
-    vec3(0.0, 0.0, 1.0)
+static float3 colors[3] = float3[](
+    float3(1.0, 0.0, 0.0),
+    float3(0.0, 1.0, 0.0),
+    float3(0.0, 0.0, 1.0)
 );
 
-void main() {
-    gl_Position = vec4(positions[gl_VertexIndex], 0.0, 1.0);
-    fragColor = colors[gl_VertexIndex];
+struct VertexOutput {
+    float3 color;
+    float4 sv_position : SV_Position;
+};
+
+VertexOutput vertMain(uint vid : SV_VertexID) {
+    VertexOutput output;
+    output.sv_position = float4(positions[vid], 0.0, 1.0);
+    output.color = colors[vid];
+    return output;
 }
-```
 
-And the contents of `shader.frag` should be:
-
-```glsl
-#version 450
-
-layout(location = 0) in vec3 fragColor;
-
-layout(location = 0) out vec4 outColor;
-
-void main() {
-    outColor = vec4(fragColor, 1.0);
+float4 fragMain(VertexOutput inVert) : SV_Target
+{
+    float3 color = inVert.color;
+    return float4(color, 1.0);
 }
 ```
 
 We're now going to compile these into SPIR-V bytecode using the
-`glslc` program.
+`slangc` program.
 
 **Windows**
 
 Create a `compile.bat` file with the following contents:
 
 ```bash
-C:/VulkanSDK/x.x.x.x/Bin/glslc.exe shader.vert -o vert.spv
-C:/VulkanSDK/x.x.x.x/Bin/glslc.exe shader.frag -o frag.spv
-pause
+C:/VulkanSDK/x.x.x.x/bin/slangc.exe shader.slang -target spirv -profile spirv_1_4 -emit-spirv-directly -fvk-use-entrypoint-name -entry vertMain -entry fragMain -o slang.spv
 ```
 
-Replace the path to `glslc.exe` with the path to where you installed
+Replace the path to `slangc.exe` with the path to where you installed
 the Vulkan SDK. Double click the file to run it.
 
 **Linux**
@@ -249,8 +267,7 @@ the Vulkan SDK. Double click the file to run it.
 Create a `compile.sh` file with the following contents:
 
 ```bash
-/home/user/VulkanSDK/x.x.x.x/x86_64/bin/glslc shader.vert -o vert.spv
-/home/user/VulkanSDK/x.x.x.x/x86_64/bin/glslc shader.frag -o frag.spv
+/home/user/VulkanSDK/x.x.x.x/x86_64/bin/slangc shader.slang -target spirv -profile spirv_1_4 -emit-spirv-directly -fvk-use-entrypoint-name -entry vertMain -entry fragMain -o slang.spv
 ```
 
 Replace the path to `glslc` with the path to where you installed the
@@ -258,16 +275,53 @@ Vulkan SDK. Make the script executable with `chmod +x compile.sh` and run it.
 
 **End of platform-specific instructions**
 
-These two commands tell the compiler to read the GLSL source file and output a SPIR-V bytecode file using the `-o` (output) flag.
+These two commands tell the compiler to read the Slang source file and output a
+SPIR-V 1.4 bytecode file directly using the `-o` (output) flag.
 
-If your shader contains a syntax error then the compiler will tell you the line
+Note: SlangC natively supports SPIR-V 1.3 and above without needing to go
+through emitting GLSL to get to SPIR-V. While everything in this tutorial
+could work with SPIR-V 1.0, it would require us to break the Slang shaders
+up into multiple files, which begs the question: what's the point? Targeting
+SPIR-V 1.4 means you'll be working with a more capable version of the
+standard rather than an older, more limited one.
+
+If your shadercontains a syntax error then the compiler will tell you the line
 number and problem, as you would expect. Try leaving out a semicolon for example
 and run the compile script again. Also try running the compiler without any
 arguments to see what kinds of flags it supports. It can, for example, also
 output the bytecode into a human-readable format so you can see exactly what
 your shader is doing and any optimizations that have been applied at this stage.
 
-Compiling shaders on the commandline is one of the most straightforward options and it's the one that we'll use in this tutorial, but it's also possible to compile shaders directly from your own code. The Vulkan SDK includes [libshaderc](https://github.com/google/shaderc), which is a library to compile GLSL code to SPIR-V from within your program.
+Compiling shaders on the commandline is one of the most straightforward
+options, yet the best path and one we use in this tutorial is to create a
+CMake function:
+
+```cmake
+function (add_slang_shader_target TARGET)
+  cmake_parse_arguments ("SHADER" "" "" "SOURCES" ${ARGN})
+  set (SHADERS_DIR ${CMAKE_CURRENT_LIST_DIR}/shaders)
+  set (ENTRY_POINTS -entry vertMain -entry fragMain)
+  add_custom_command (
+          OUTPUT ${SHADERS_DIR}
+          COMMAND ${CMAKE_COMMAND} -E make_directory ${SHADERS_DIR}
+  )
+  add_custom_command (
+          OUTPUT  ${SHADERS_DIR}/slang.spv
+          COMMAND ${SLANGC_EXECUTABLE} ${SHADER_SOURCES} -target spirv -profile spirv_1_4 -emit-spirv-directly -fvk-use-entrypoint-name ${ENTRY_POINTS} -o slang.spv
+          WORKING_DIRECTORY ${SHADERS_DIR}
+          DEPENDS ${SHADERS_DIR} ${SHADER_SOURCES}
+          COMMENT "Compiling Slang Shaders"
+          VERBATIM
+  )
+  add_custom_target (${TARGET} DEPENDS ${SHADERS_DIR}/slang.spv)
+endfunction()
+
+Then you can add the Slang build step to your target like this:
+
+```cmake
+add_slang_shader_target( foo SOURCES ${SHADER_SLANG_SOURCES})
+add_dependencies(bar foo)
+```
 
 ## Loading a shader
 
@@ -325,9 +379,7 @@ of the two shaders:
 
 ```c++
 void createGraphicsPipeline() {
-    auto vertShaderCode = readFile("shaders/vert.spv");
-    auto fragShaderCode = readFile("shaders/frag.spv");
-}
+	auto           shaderCode   = readFile("shaders/slang.spv");
 ```
 
 Make sure that the shaders are loaded correctly by printing the size of the
@@ -388,19 +440,15 @@ Shader modules are just a thin wrapper around the shader bytecode that we've pre
 
 ```c++
 void createGraphicsPipeline() {
-    auto vertShaderCode = readFile("shaders/vert.spv");
-    auto fragShaderCode = readFile("shaders/frag.spv");
-
-    VkShaderModule vertShaderModule = createShaderModule(vertShaderCode);
-    VkShaderModule fragShaderModule = createShaderModule(fragShaderCode);
+	auto           shaderCode   = readFile("shaders/slang.spv");
+	VkShaderModule shaderModule = createShaderModule(shaderCode);
 ```
 
 The cleanup should then happen at the end of the function by adding two calls to `vkDestroyShaderModule`. All of the remaining code in this chapter will be inserted before these lines.
 
 ```c++
     ...
-    vkDestroyShaderModule(device, fragShaderModule, nullptr);
-    vkDestroyShaderModule(device, vertShaderModule, nullptr);
+    vkDestroyShaderModule(device, shaderModule, nullptr);
 }
 ```
 
@@ -422,8 +470,8 @@ which pipeline stage the shader is going to be used. There is an enum value for
 each of the programmable stages described in the previous chapter.
 
 ```c++
-vertShaderStageInfo.module = vertShaderModule;
-vertShaderStageInfo.pName = "main";
+vertShaderStageInfo.module = shaderModule;
+vertShaderStageInfo.pName  = "vertMain";
 ```
 
 The next two members specify the shader module containing the code, and the
@@ -446,10 +494,10 @@ Modifying the structure to suit the fragment shader is easy:
 
 ```c++
 VkPipelineShaderStageCreateInfo fragShaderStageInfo{};
-fragShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-fragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-fragShaderStageInfo.module = fragShaderModule;
-fragShaderStageInfo.pName = "main";
+fragShaderStageInfo.sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+fragShaderStageInfo.stage  = VK_SHADER_STAGE_FRAGMENT_BIT;
+fragShaderStageInfo.module = shaderModule;
+fragShaderStageInfo.pName  = "fragMain";
 ```
 
 Finish by defining an array that contains these two structs, which we'll later
