@@ -211,5 +211,5 @@ That was a lot of work, but in the next chapter it all comes together to finally
 create the graphics pipeline object!
 
 [C++ code](/code/11_render_passes.cpp) /
-[Vertex shader](/code/09_shader_base.vert) /
-[Fragment shader](/code/09_shader_base.frag)
+[Slang shader](/code/09_shader_base.slang)
+
