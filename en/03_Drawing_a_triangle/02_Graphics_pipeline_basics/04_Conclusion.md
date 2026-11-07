@@ -117,6 +117,60 @@ successful pipeline creation! We are already getting quite close to seeing
 something pop up on the screen. In the next couple of chapters we'll set up the
 actual framebuffers from the swap chain images and prepare the drawing commands.
 
+## SDL and Slang compatibility notes
+
+This SDL version of the sample loads both entry points from a single Slang
+module, `shaders/slang.spv`. Recent versions of `slangc` emit SPIR-V 1.5 by
+default. SPIR-V 1.5 must be used with the Vulkan 1.2 SPIR-V environment, so the
+application requests Vulkan 1.2 when it creates its instance:
+
+```c++
+appInfo.apiVersion = VK_API_VERSION_1_2;
+```
+
+Requesting Vulkan 1.0 while loading that binary causes validation to report an
+invalid SPIR-V version. Build the shader before running the program:
+
+```sh
+slangc 09_shader_base.slang -o shaders/slang.spv
+```
+
+The vertex shader uses `SV_VertexID`. In the generated SPIR-V this requires the
+`DrawParameters` capability, which is exposed in Vulkan 1.1 as
+`shaderDrawParameters`. Enable the feature when the logical device is created:
+
+```c++
+VkPhysicalDeviceVulkan11Features vulkan11Features{};
+vulkan11Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES;
+vulkan11Features.shaderDrawParameters = VK_TRUE;
+
+createInfo.pNext = &vulkan11Features;
+```
+
+Before selecting a physical device, the sample queries this feature through
+`VkPhysicalDeviceFeatures2` and rejects devices that do not support it. This
+prevents an unsupported device from being selected and makes the requirement
+explicit.
+
+Validation layers are instance layers. Device layers are obsolete, so
+`VkDeviceCreateInfo::enabledLayerCount` must remain zero; the validation layer
+is enabled only while creating `VkInstance`.
+
+Finally, a shader module must remain valid for the entire
+`vkCreateGraphicsPipelines` call. The module is therefore destroyed only after
+the graphics pipeline has been successfully created:
+
+```c++
+if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo,
+                              nullptr, &graphicsPipeline) != VK_SUCCESS) {
+    throw std::runtime_error("failed to create graphics pipeline!");
+}
+
+vkDestroyShaderModule(device, shaderModule, nullptr);
+```
+
+Destroying it before this call makes the pipeline stages refer to an invalid
+`VkShaderModule`, which validation reports and which can lead to a crash.
+
 [C++ code](/code/12_graphics_pipeline_complete.cpp) /
-[Vertex shader](/code/09_shader_base.vert) /
-[Fragment shader](/code/09_shader_base.frag)
+[Slang shader](/code/09_shader_base.slang)
