@@ -74,6 +74,7 @@ class HelloTriangleApplication {
 		createInstance();
 		setupDebugMessenger();
 		pickPhysicalDevice();
+		createLogicalDevice();
 	}
 
 	void mainLoop() {

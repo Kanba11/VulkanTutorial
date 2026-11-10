@@ -280,6 +280,7 @@ class HelloTriangleApplication {
 		createInfo.pQueueCreateInfos    = queueCreateInfos.data();
 
 		createInfo.pEnabledFeatures = &deviceFeatures;
+		createInfo.pNext            = &vulkan11Features;
 
 		createInfo.enabledExtensionCount   = static_cast<uint32_t>(deviceExtensions.size());
 		createInfo.ppEnabledExtensionNames = deviceExtensions.data();

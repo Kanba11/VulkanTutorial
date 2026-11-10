@@ -5,11 +5,18 @@ triangle on the screen. Let's start by creating the function and call it from
 `mainLoop`:
 
 ```c++
+
 void mainLoop() {
-    while (!glfwWindowShouldClose(window)) {
-        glfwPollEvents();
-        drawFrame();
-    }
+	bool running = true;
+	while (running) {
+		SDL_Event e;
+		while (SDL_PollEvent(&e)) {
+			if (e.type == SDL_EVENT_QUIT) {
+				running = false;
+			}
+		}
+		drawFrame();
+	}
 }
 
 ...
@@ -545,12 +552,17 @@ before exiting `mainLoop` and destroying the window:
 
 ```c++
 void mainLoop() {
-    while (!glfwWindowShouldClose(window)) {
-        glfwPollEvents();
-        drawFrame();
-    }
-
-    vkDeviceWaitIdle(device);
+	bool running = true;
+	while (running) {
+		SDL_Event e;
+		while (SDL_PollEvent(&e)) {
+			if (e.type == SDL_EVENT_QUIT) {
+				running = false;
+			}
+		}
+		drawFrame();
+	}
+	vkDeviceWaitIdle(device);
 }
 ```
 
